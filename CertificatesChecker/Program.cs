@@ -23,7 +23,7 @@ namespace CertificatesChecker
 
             bool ServerCertificateCustomValidationCallback(HttpRequestMessage message, X509Certificate2 certificate, X509Chain chain, SslPolicyErrors errors)
             {
-                tcs.TrySetResult(certificate);
+                tcs.TrySetResult(new X509Certificate2(certificate.RawData));
                 return true;
             }
 
