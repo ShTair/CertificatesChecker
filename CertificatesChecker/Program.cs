@@ -31,11 +31,11 @@ namespace CertificatesChecker
             {
                 try
                 {
-                    target.Certificate = await GetCertificateAsync(target.Uri, new CancellationTokenSource(5000).Token);
+                    target.Certificate = await GetCertificateAsync($"https://{target.Domain}/", new CancellationTokenSource(5000).Token);
                     lock (logLock)
                     {
                         Console.WriteLine();
-                        Console.WriteLine($"Uri    : ({sw.Elapsed.TotalSeconds:0.00}秒){target.Uri}");
+                        Console.WriteLine($"Domain : ({sw.Elapsed.TotalSeconds:0.00}秒) {target.Domain}");
                         Console.WriteLine($"Subject: {target.Certificate.Subject}");
                         Console.WriteLine($"Issuer : {target.Certificate.Issuer}");
                         Console.WriteLine($"Thumb  : {target.Certificate.Thumbprint}");
@@ -47,7 +47,7 @@ namespace CertificatesChecker
                     lock (logLock)
                     {
                         Console.WriteLine();
-                        Console.WriteLine($"Uri    : ({sw.Elapsed.TotalSeconds:0.00}秒){target.Uri}");
+                        Console.WriteLine($"Domain : ({sw.Elapsed.TotalSeconds:0.00}秒){target.Domain}");
                         Console.WriteLine(exp);
                     }
                 }
@@ -61,6 +61,11 @@ namespace CertificatesChecker
             var limit = now.AddDays(-30);
             foreach (var target in targets.OrderBy(t => t.Certificate?.NotAfter ?? DateTime.MinValue))
             {
+                var isChanged = target.Thumbprint != target.Certificate.Thumbprint;
+                target.Thumbprint = target.Certificate?.Thumbprint;
+                target.NotAfter = target.Certificate?.NotAfter;
+                target.Certificate.Dispose();
+
                 var message = "期限切れ";
                 if (target.Certificate == null)
                 {
@@ -68,24 +73,20 @@ namespace CertificatesChecker
                 }
                 else
                 {
-                    var span = target.Certificate.NotAfter - now;
-
+                    var span = target.NotAfter - now;
                     if (span > TimeSpan.Zero)
                     {
-                        var days = span.TotalDays;
-                        message = $"残り {days.ToString("0").PadLeft(3)} 日";
+                        message = $"残り{span.Value.TotalDays.ToString("0").PadLeft(3)}日";
                     }
 
-                    if (target.Thumbprint != target.Certificate.Thumbprint)
+                    if (isChanged)
                     {
-                        target.Thumbprint = target.Certificate.Thumbprint;
                         message = message + " 更新";
                     }
 
-                    target.Certificate.Dispose();
                 }
 
-                Console.WriteLine($"{message} {target.Uri}");
+                Console.WriteLine($"{message} {target.Domain}");
             }
 
             settingsJson = JsonConvert.SerializeObject(targets, Formatting.Indented);
