@@ -1,10 +1,12 @@
 ﻿using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CertificatesChecker
@@ -22,19 +24,33 @@ namespace CertificatesChecker
             var settings = JsonConvert.DeserializeObject<List<string>>(settingsJson);
             if (settings == null) return;
 
-            var now = DateTime.Now;
+            var sw = new Stopwatch();
+            sw.Start();
             var logLock = new object();
             var datas = await Task.WhenAll(settings.Select(async uri =>
             {
-                var certificate = await GetCertificateAsync(uri);
-
-                lock (logLock)
+                X509Certificate2 certificate = null;
+                try
                 {
-                    Console.WriteLine();
-                    Console.WriteLine($"Uri    : ({(DateTime.Now - now).TotalSeconds:0.00}秒){uri}");
-                    Console.WriteLine($"Subject: {certificate.Subject}");
-                    Console.WriteLine($"Issuer : {certificate.Issuer}");
-                    Console.WriteLine($"Valid  : [{certificate.NotBefore:yyyy/MM/dd HH:mm:ss}] -> [{certificate.NotAfter:yyyy/MM/dd HH:mm:ss}]");
+                    certificate = await GetCertificateAsync(uri, new CancellationTokenSource(5000).Token);
+                    lock (logLock)
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine($"Uri    : ({sw.Elapsed.TotalSeconds:0.00}秒){uri}");
+                        Console.WriteLine($"Subject: {certificate.Subject}");
+                        Console.WriteLine($"Issuer : {certificate.Issuer}");
+                        Console.WriteLine($"Thumb  : {certificate.Thumbprint}");
+                        Console.WriteLine($"Valid  : [{certificate.NotBefore:yyyy/MM/dd HH:mm:ss}] -> [{certificate.NotAfter:yyyy/MM/dd HH:mm:ss}]");
+                    }
+                }
+                catch (Exception exp)
+                {
+                    lock (logLock)
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine($"Uri    : ({sw.Elapsed.TotalSeconds:0.00}秒){uri}");
+                        Console.WriteLine(exp);
+                    }
                 }
 
                 return (uri, certificate);
@@ -42,47 +58,59 @@ namespace CertificatesChecker
 
             Console.WriteLine();
 
-            now = DateTime.Now;
+            var now = DateTime.Now;
             var limit = now.AddDays(-30);
-            foreach (var (uri, certificate) in datas.OrderBy(t => t.certificate.NotAfter))
+            foreach (var (uri, certificate) in datas.OrderBy(t => t.certificate?.NotAfter ?? DateTime.MinValue))
             {
-                var span = certificate.NotAfter - now;
-                certificate.Dispose();
-
-                var message = "期限切れです！！";
-                if (span > TimeSpan.Zero)
+                var message = "期限切れ";
+                if (certificate == null)
                 {
-                    var days = span.TotalDays;
-                    message = $"残り{days:0}日";
+                    message = "取得エラー";
+                }
+                else
+                {
+                    var span = certificate.NotAfter - now;
+                    certificate.Dispose();
+
+                    if (span > TimeSpan.Zero)
+                    {
+                        var days = span.TotalDays;
+                        message = $"残り {days.ToString("0").PadLeft(3)} 日";
+                    }
                 }
 
                 Console.WriteLine($"{message} {uri}");
             }
         }
 
-        private static async Task<X509Certificate2> GetCertificateAsync(string uri)
+        private static async Task<X509Certificate2> GetCertificateAsync(string uri, CancellationToken token)
         {
             var tcs = new TaskCompletionSource<X509Certificate2>();
-            _ = Task.Run(async () =>
-            {
-                var handler = new HttpClientHandler
-                {
-                    ServerCertificateCustomValidationCallback = (_1, c, _2, _3) =>
-                    {
-                        tcs.TrySetResult(new X509Certificate2(c.RawData));
-                        return false;
-                    },
-                };
+            token.Register(() => tcs.TrySetException(new OperationCanceledException(token)));
 
-                try
+            if (!token.IsCancellationRequested)
+            {
+                _ = Task.Run(async () =>
                 {
-                    using (var hc = new HttpClient(handler))
+                    var handler = new HttpClientHandler
                     {
-                        await hc.GetAsync(uri);
+                        ServerCertificateCustomValidationCallback = (_1, c, _2, _3) =>
+                        {
+                            tcs.TrySetResult(new X509Certificate2(c.RawData));
+                            return false;
+                        },
+                    };
+
+                    try
+                    {
+                        using (var hc = new HttpClient(handler))
+                        {
+                            await hc.GetAsync(uri);
+                        }
                     }
-                }
-                catch { }
-            });
+                    catch { }
+                });
+            }
 
             return await tcs.Task;
         }
