@@ -21,26 +21,25 @@ namespace CertificatesChecker
         private static async Task Run(string settingsFile)
         {
             var settingsJson = await File.ReadAllTextAsync(settingsFile);
-            var settings = JsonConvert.DeserializeObject<List<string>>(settingsJson);
+            var settings = JsonConvert.DeserializeObject<List<Target>>(settingsJson);
             if (settings == null) return;
 
             var sw = new Stopwatch();
             sw.Start();
             var logLock = new object();
-            var datas = await Task.WhenAll(settings.Select(async uri =>
+            var datas = await Task.WhenAll(settings.Select(async target =>
             {
-                X509Certificate2 certificate = null;
                 try
                 {
-                    certificate = await GetCertificateAsync(uri, new CancellationTokenSource(5000).Token);
+                    target.Certificate = await GetCertificateAsync(target.Uri, new CancellationTokenSource(5000).Token);
                     lock (logLock)
                     {
                         Console.WriteLine();
-                        Console.WriteLine($"Uri    : ({sw.Elapsed.TotalSeconds:0.00}秒){uri}");
-                        Console.WriteLine($"Subject: {certificate.Subject}");
-                        Console.WriteLine($"Issuer : {certificate.Issuer}");
-                        Console.WriteLine($"Thumb  : {certificate.Thumbprint}");
-                        Console.WriteLine($"Valid  : [{certificate.NotBefore:yyyy/MM/dd HH:mm:ss}] -> [{certificate.NotAfter:yyyy/MM/dd HH:mm:ss}]");
+                        Console.WriteLine($"Uri    : ({sw.Elapsed.TotalSeconds:0.00}秒){target.Uri}");
+                        Console.WriteLine($"Subject: {target.Certificate.Subject}");
+                        Console.WriteLine($"Issuer : {target.Certificate.Issuer}");
+                        Console.WriteLine($"Thumb  : {target.Certificate.Thumbprint}");
+                        Console.WriteLine($"Valid  : [{target.Certificate.NotBefore:yyyy/MM/dd HH:mm:ss}] -> [{target.Certificate.NotAfter:yyyy/MM/dd HH:mm:ss}]");
                     }
                 }
                 catch (Exception exp)
@@ -48,29 +47,29 @@ namespace CertificatesChecker
                     lock (logLock)
                     {
                         Console.WriteLine();
-                        Console.WriteLine($"Uri    : ({sw.Elapsed.TotalSeconds:0.00}秒){uri}");
+                        Console.WriteLine($"Uri    : ({sw.Elapsed.TotalSeconds:0.00}秒){target.Uri}");
                         Console.WriteLine(exp);
                     }
                 }
 
-                return (uri, certificate);
+                return target;
             }));
 
             Console.WriteLine();
 
             var now = DateTime.Now;
             var limit = now.AddDays(-30);
-            foreach (var (uri, certificate) in datas.OrderBy(t => t.certificate?.NotAfter ?? DateTime.MinValue))
+            foreach (var target in datas.OrderBy(t => t.Certificate?.NotAfter ?? DateTime.MinValue))
             {
                 var message = "期限切れ";
-                if (certificate == null)
+                if (target.Certificate == null)
                 {
                     message = "取得エラー";
                 }
                 else
                 {
-                    var span = certificate.NotAfter - now;
-                    certificate.Dispose();
+                    var span = target.Certificate.NotAfter - now;
+                    target.Certificate.Dispose();
 
                     if (span > TimeSpan.Zero)
                     {
@@ -79,7 +78,7 @@ namespace CertificatesChecker
                     }
                 }
 
-                Console.WriteLine($"{message} {uri}");
+                Console.WriteLine($"{message} {target.Uri}");
             }
         }
 
