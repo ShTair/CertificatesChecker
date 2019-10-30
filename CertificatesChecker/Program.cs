@@ -1,5 +1,5 @@
-﻿using System.Net.Http;
-using System.Net.Security;
+﻿using System;
+using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 
@@ -14,20 +14,25 @@ namespace CertificatesChecker
 
         private static async Task Run()
         {
-            var certificate = await GetCertificateAsync("https://www.google.co.jp/");
+            using (var certificate = await GetCertificateAsync("https://www.google.co.jp/"))
+            {
+                Console.WriteLine(certificate.Subject);
+            }
         }
 
         private static async Task<X509Certificate2> GetCertificateAsync(string uri)
         {
             var tcs = new TaskCompletionSource<X509Certificate2>();
 
-            bool ServerCertificateCustomValidationCallback(HttpRequestMessage message, X509Certificate2 certificate, X509Chain chain, SslPolicyErrors errors)
+            var handler = new HttpClientHandler
             {
-                tcs.TrySetResult(new X509Certificate2(certificate.RawData));
-                return true;
-            }
+                ServerCertificateCustomValidationCallback = (_1, c, _2, _3) =>
+                {
+                    tcs.TrySetResult(new X509Certificate2(c.RawData));
+                    return true;
+                },
+            };
 
-            var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = ServerCertificateCustomValidationCallback };
             using (var hc = new HttpClient(handler))
             {
                 await hc.GetAsync(uri);
