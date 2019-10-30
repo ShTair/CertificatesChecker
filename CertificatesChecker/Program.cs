@@ -21,13 +21,13 @@ namespace CertificatesChecker
         private static async Task Run(string settingsFile)
         {
             var settingsJson = await File.ReadAllTextAsync(settingsFile);
-            var settings = JsonConvert.DeserializeObject<List<Target>>(settingsJson);
-            if (settings == null) return;
+            var targets = JsonConvert.DeserializeObject<List<Target>>(settingsJson);
+            if (targets == null) return;
 
             var sw = new Stopwatch();
             sw.Start();
             var logLock = new object();
-            var datas = await Task.WhenAll(settings.Select(async target =>
+            await Task.WhenAll(targets.Select(async target =>
             {
                 try
                 {
@@ -59,7 +59,7 @@ namespace CertificatesChecker
 
             var now = DateTime.Now;
             var limit = now.AddDays(-30);
-            foreach (var target in datas.OrderBy(t => t.Certificate?.NotAfter ?? DateTime.MinValue))
+            foreach (var target in targets.OrderBy(t => t.Certificate?.NotAfter ?? DateTime.MinValue))
             {
                 var message = "期限切れ";
                 if (target.Certificate == null)
@@ -69,17 +69,27 @@ namespace CertificatesChecker
                 else
                 {
                     var span = target.Certificate.NotAfter - now;
-                    target.Certificate.Dispose();
 
                     if (span > TimeSpan.Zero)
                     {
                         var days = span.TotalDays;
                         message = $"残り {days.ToString("0").PadLeft(3)} 日";
                     }
+
+                    if (target.Thumbprint != target.Certificate.Thumbprint)
+                    {
+                        target.Thumbprint = target.Certificate.Thumbprint;
+                        message = message + " 更新";
+                    }
+
+                    target.Certificate.Dispose();
                 }
 
                 Console.WriteLine($"{message} {target.Uri}");
             }
+
+            settingsJson = JsonConvert.SerializeObject(targets, Formatting.Indented);
+            await File.WriteAllTextAsync(settingsFile, settingsJson);
         }
 
         private static async Task<X509Certificate2> GetCertificateAsync(string uri, CancellationToken token)
