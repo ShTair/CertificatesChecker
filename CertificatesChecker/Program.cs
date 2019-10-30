@@ -1,4 +1,7 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
@@ -9,14 +12,24 @@ namespace CertificatesChecker
     {
         static void Main(string[] args)
         {
-            Run().Wait();
+            Run(args[0]).Wait();
         }
 
-        private static async Task Run()
+        private static async Task Run(string settingsFile)
         {
-            using (var certificate = await GetCertificateAsync("https://www.google.co.jp/"))
+            var settingsJson = await File.ReadAllTextAsync(settingsFile);
+            var settings = JsonConvert.DeserializeObject<List<string>>(settingsJson);
+            if (settings == null) return;
+
+            foreach (var setting in settings)
             {
-                Console.WriteLine(certificate.Subject);
+                using (var certificate = await GetCertificateAsync(setting))
+                {
+                    Console.WriteLine();
+                    Console.WriteLine(setting);
+                    Console.WriteLine(certificate.Subject);
+                    Console.WriteLine($"{certificate.NotBefore:yyyy/MM/dd HH:mm} -> {certificate.NotAfter:yyyy/MM/dd HH:mm}");
+                }
             }
         }
 
