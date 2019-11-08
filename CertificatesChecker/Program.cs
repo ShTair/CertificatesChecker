@@ -4,8 +4,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
-using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -31,7 +29,7 @@ namespace CertificatesChecker
             {
                 try
                 {
-                    target.Certificate = await GetCertificateAsync($"https://{target.Domain}/", new CancellationTokenSource(5000).Token);
+                    target.Certificate = await CertificateManager.GetAsync($"https://{target.Domain}/", new CancellationTokenSource(5000).Token);
                     lock (logLock)
                     {
                         Console.WriteLine();
@@ -90,41 +88,6 @@ namespace CertificatesChecker
 
             settingsJson = JsonConvert.SerializeObject(targets, Formatting.Indented);
             await File.WriteAllTextAsync(settingsFile, settingsJson);
-        }
-
-        private static async Task<X509Certificate2> GetCertificateAsync(string uri, CancellationToken token)
-        {
-            var tcs = new TaskCompletionSource<X509Certificate2>();
-            token.Register(() => tcs.TrySetException(new OperationCanceledException(token)));
-
-            if (!token.IsCancellationRequested)
-            {
-                _ = Task.Run(async () =>
-                {
-                    var handler = new HttpClientHandler
-                    {
-                        ServerCertificateCustomValidationCallback = (_1, c, _2, _3) =>
-                        {
-                            tcs.TrySetResult(new X509Certificate2(c.RawData));
-                            return false;
-                        },
-                    };
-
-                    try
-                    {
-                        using (var hc = new HttpClient(handler))
-                        {
-                            await hc.GetAsync(uri);
-                        }
-                    }
-                    catch (Exception exp)
-                    {
-                        tcs.TrySetException(exp);
-                    }
-                });
-            }
-
-            return await tcs.Task;
         }
     }
 }
