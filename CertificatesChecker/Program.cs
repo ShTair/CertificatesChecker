@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace CertificatesChecker
@@ -29,7 +28,7 @@ namespace CertificatesChecker
             {
                 try
                 {
-                    target.Certificate = await CertificateManager.GetAsync($"https://{target.Domain}/", new CancellationTokenSource(5000).Token);
+                    target.Certificate = await CertificateManager.GetAsync($"https://{target.Domain}/", 5000);
                     lock (logLock)
                     {
                         Console.WriteLine();
