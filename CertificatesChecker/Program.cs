@@ -83,7 +83,6 @@ namespace CertificatesChecker
                     {
                         message = message + " 更新";
                     }
-
                 }
 
                 Console.WriteLine($"{message} {target.Domain}");
@@ -118,7 +117,10 @@ namespace CertificatesChecker
                             await hc.GetAsync(uri);
                         }
                     }
-                    catch { }
+                    catch (Exception exp)
+                    {
+                        tcs.TrySetException(exp);
+                    }
                 });
             }
 
