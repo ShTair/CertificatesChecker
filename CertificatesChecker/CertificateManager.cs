@@ -31,7 +31,8 @@ namespace CertificatesChecker
                     {
                         ServerCertificateCustomValidationCallback = (_1, c, _2, _3) =>
                         {
-                            tcs.TrySetResult(new X509Certificate2(c.RawData));
+                            if (c == null) tcs.TrySetException(new NullReferenceException());
+                            else tcs.TrySetResult(new X509Certificate2(c.RawData));
                             return false;
                         },
                     };

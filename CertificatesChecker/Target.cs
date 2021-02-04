@@ -1,18 +1,18 @@
-﻿using Newtonsoft.Json;
-using System;
+﻿using System;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Json.Serialization;
 
 namespace CertificatesChecker
 {
     class Target
     {
-        public string Domain { get; set; }
+        public string Domain { get; set; } = default!;
 
-        public string Thumbprint { get; set; }
+        public string? Thumbprint { get; set; }
 
         public DateTime? NotAfter { get; set; }
 
         [JsonIgnore]
-        public X509Certificate2 Certificate { get; set; }
+        public X509Certificate2? Certificate { get; set; }
     }
 }

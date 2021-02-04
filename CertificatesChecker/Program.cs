@@ -1,24 +1,23 @@
-﻿using Newtonsoft.Json;
+﻿using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace CertificatesChecker
 {
     class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
-            Run(args[0]).Wait();
-        }
+            var configuration = new ConfigurationBuilder().AddUserSecrets<Program>().Build();
+            var settingsFile = configuration.GetValue<string>("SettingsPath");
 
-        private static async Task Run(string settingsFile)
-        {
             var settingsJson = await File.ReadAllTextAsync(settingsFile);
-            var targets = JsonConvert.DeserializeObject<List<Target>>(settingsJson);
+            var targets = JsonSerializer.Deserialize<List<Target>>(settingsJson);
             if (targets == null) return;
 
             var sw = new Stopwatch();
@@ -58,10 +57,10 @@ namespace CertificatesChecker
             var limit = now.AddDays(-30);
             foreach (var target in targets.OrderBy(t => t.Certificate?.NotAfter ?? DateTime.MinValue))
             {
-                var isChanged = target.Thumbprint != target.Certificate.Thumbprint;
+                var isChanged = target.Thumbprint != target.Certificate?.Thumbprint;
                 target.Thumbprint = target.Certificate?.Thumbprint;
                 target.NotAfter = target.Certificate?.NotAfter;
-                target.Certificate.Dispose();
+                target.Certificate?.Dispose();
 
                 var message = "期限切れ";
                 if (target.Certificate == null)
@@ -73,7 +72,7 @@ namespace CertificatesChecker
                     var span = target.NotAfter - now;
                     if (span > TimeSpan.Zero)
                     {
-                        message = $"残り{span.Value.TotalDays.ToString("0").PadLeft(3)}日";
+                        message = $"残り{span.Value.TotalDays,3:0}日";
                     }
 
                     if (isChanged)
@@ -85,7 +84,8 @@ namespace CertificatesChecker
                 Console.WriteLine($"{message} {target.Domain}");
             }
 
-            settingsJson = JsonConvert.SerializeObject(targets, Formatting.Indented);
+            var oprions = new JsonSerializerOptions { WriteIndented = true };
+            settingsJson = JsonSerializer.Serialize(targets, oprions);
             await File.WriteAllTextAsync(settingsFile, settingsJson);
         }
     }
